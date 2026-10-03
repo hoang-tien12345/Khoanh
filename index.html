@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kho Ảnh</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,sans-serif;background:#f4f6fa;color:#1d2433}
+[hidden]{display:none!important}
+button{cursor:pointer;border:0;border-radius:8px;padding:9px 14px;background:#2563eb;color:#fff;font-size:14px}
+button.g{background:#e5e9f2;color:#1d2433}
+input{padding:9px 12px;border:1px solid #cbd3e1;border-radius:8px;font-size:14px}
+#login{max-width:340px;margin:18vh auto;background:#fff;padding:28px;border-radius:14px;box-shadow:0 4px 20px #0001;text-align:center}
+#login input{width:100%;margin:14px 0}
+#err{color:#dc2626;font-size:13px;min-height:16px}
+#demo{background:#fff7d6;color:#7a5b00;font-size:13px;padding:8px 18px;text-align:center}
+header{display:flex;gap:10px;align-items:center;padding:12px 18px;background:#fff;border-bottom:1px solid #e1e6ef;position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0}
+header input{flex:1;min-width:0}
+.wrap{display:flex;min-height:calc(100vh - 62px)}
+aside{width:230px;padding:14px;background:#fff;border-right:1px solid #e1e6ef;flex:0 0 auto}
+.f{display:flex;justify-content:space-between;padding:9px 10px;border-radius:8px;cursor:pointer;font-size:14px}
+.f:hover{background:#eef2fb}.f.on{background:#dbe7ff;font-weight:600}
+.x{color:#888;font-size:12px}
+.hint{font-size:11px;color:#888;margin-top:10px}
+main{flex:1;padding:18px;min-width:0}
+.bar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+#st{font-size:13px;color:#555}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+.c{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px #0001}
+.c img{width:100%;height:150px;object-fit:cover;display:block;cursor:pointer}
+.c div{padding:7px 9px;font-size:12px;display:flex;justify-content:space-between;gap:6px;align-items:center}
+.c b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.c i{cursor:pointer;font-style:normal}
+#lb{position:fixed;inset:0;background:#000d;display:flex;align-items:center;justify-content:center;z-index:9}
+#lb img{max-width:92vw;max-height:92vh}
+@media(max-width:700px){.wrap{flex-direction:column}aside{width:100%;border:0;border-bottom:1px solid #e1e6ef}}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <h2>🔒 Kho Ảnh</h2>
+  <input id="pw" type="password" placeholder="Nhập mật khẩu">
+  <button id="loginBtn" style="width:100%">Vào</button>
+  <p id="err"></p>
+</div>
+
+<div id="app" hidden>
+  <div id="demo" hidden>⚠ Đang ở <b>chế độ dùng thử</b>: ảnh chỉ lưu trong trình duyệt này. Điền cấu hình Firebase để lưu online.</div>
+  <header>
+    <h1>📷 Kho Ảnh</h1>
+    <input id="q" placeholder="Tìm ảnh theo tên...">
+    <button class="g" id="out">Thoát</button>
+  </header>
+  <div class="wrap">
+    <aside>
+      <button id="newF" style="width:100%;margin-bottom:10px">+ Thư mục mới</button>
+      <div id="folders"></div>
+      <div class="hint">Nhấp chuột phải (hoặc giữ lâu trên điện thoại) vào thư mục để xóa.</div>
+    </aside>
+    <main>
+      <div class="bar">
+        <button id="up">⬆ Tải ảnh lên</button>
+        <input id="file" type="file" accept="image/*" multiple hidden>
+        <span id="st"></span>
+      </div>
+      <div id="grid"></div>
+    </main>
+  </div>
+</div>
+<div id="lb" hidden></div>
+
+<script type="module">
+// ====== CẤU HÌNH ======
+// Để nguyên = chế độ dùng thử (mật khẩu: 06092003). Điền thật = lưu trên Firebase.
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.firebasestorage.app",
+  messagingSenderId: "000000000000",
+  appId: "YOUR_APP_ID"
+};
+const SHARED_EMAIL = "kho@anh.com";   // user tạo trong Firebase Authentication (mật khẩu đặt là 06092003)
+const DEMO_PASSWORD = "06092003";     // chỉ dùng cho chế độ dùng thử
+// ======================
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+/* ---------- Backend dùng thử: IndexedDB ---------- */
+function demoBackend() {
+  let cb = () => {};
+  const dbp = new Promise((res, rej) => {
+    const r = indexedDB.open("khoanh", 1);
+    r.onupgradeneeded = () => { r.result.createObjectStore("folders", { keyPath: "id" }); r.result.createObjectStore("images", { keyPath: "id" }); };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+  const tx = async (s, m, fn) => {
+    const d = await dbp;
+    return new Promise((res, rej) => {
+      const t = d.transaction(s, m), q = fn(t.objectStore(s));
+      t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error);
+    });
+  };
+  const urls = {};
+  const isIn = () => { try { return sessionStorage.getItem("ok") === "1"; } catch { return false; } };
+  return {
+    demo: true,
+    onAuth(f) { cb = f; cb(isIn()); },
+    async login(p) { if (p !== DEMO_PASSWORD) throw 0; try { sessionStorage.setItem("ok", "1"); } catch {} cb(true); },
+    async logout() { try { sessionStorage.removeItem("ok"); } catch {} cb(false); },
+    folders: () => tx("folders", "readonly", s => s.getAll()),
+    async images() {
+      const l = await tx("images", "readonly", s => s.getAll());
+      return l.map(x => ({ ...x, url: urls[x.id] || (urls[x.id] = URL.createObjectURL(x.blob)) }));
+    },
+    async addFolder(name) { const f = { id: uid(), name }; await tx("folders", "readwrite", s => s.put(f)); return f; },
+    async delFolder(id) { await tx("folders", "readwrite", s => s.delete(id)); },
+    async addImage(file, folderId, prog) {
+      const x = { id: uid(), name: file.name, folderId, blob: file, createdAt: Date.now() };
+      await tx("images", "readwrite", s => s.put(x)); prog(100);
+      return { ...x, url: urls[x.id] = URL.createObjectURL(file) };
+    },
+    async delImage(id) { await tx("images", "readwrite", s => s.delete(id)); }
+  };
+}
+
+/* ---------- Backend thật: Firebase ---------- */
+async function firebaseBackend() {
+  const b = "https://www.gstatic.com/firebasejs/10.12.2/";
+  const [A, Au, F, S] = await Promise.all(["app", "auth", "firestore", "storage"].map(m => import(b + "firebase-" + m + ".js")));
+  const app = A.initializeApp(firebaseConfig), auth = Au.getAuth(app), db = F.getFirestore(app), st = S.getStorage(app);
+  const all = async c => (await F.getDocs(F.collection(db, c))).docs.map(d => ({ id: d.id, ...d.data() }));
+  return {
+    demo: false,
+    onAuth: f => Au.onAuthStateChanged(auth, u => f(!!u)),
+    login: p => Au.signInWithEmailAndPassword(auth, SHARED_EMAIL, p),
+    logout: () => Au.signOut(auth),
+    folders: () => all("folders"),
+    images: () => all("images"),
+    async addFolder(name) { const r = await F.addDoc(F.collection(db, "folders"), { name }); return { id: r.id, name }; },
+    async delFolder(id) { await F.deleteDoc(F.doc(db, "folders", id)); },
+    async addImage(file, folderId, prog) {
+      const path = `images/${folderId}/${Date.now()}_${file.name}`;
+      const task = S.uploadBytesResumable(S.ref(st, path), file);
+      task.on("state_changed", s => prog(Math.round(s.bytesTransferred / s.totalBytes * 100)));
+      await task;
+      const url = await S.getDownloadURL(task.snapshot.ref);
+      const data = { name: file.name, url, path, folderId, createdAt: Date.now() };
+      const r = await F.addDoc(F.collection(db, "images"), data);
+      return { id: r.id, ...data };
+    },
+    async delImage(id, path) {
+      try { await S.deleteObject(S.ref(st, path)); } catch {}
+      await F.deleteDoc(F.doc(db, "images", id));
+    }
+  };
+}
+
+/* ---------- Giao diện ---------- */
+const B = firebaseConfig.apiKey === "YOUR_API_KEY" ? demoBackend() : await firebaseBackend();
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let folders = [], images = [], cur = null;
+
+async function login() {
+  $("err").textContent = "";
+  try { await B.login($("pw").value.trim()); }
+  catch (e) {
+    const c = e && e.code || "";
+    $("err").textContent = B.demo || c === "auth/invalid-credential" || c === "auth/wrong-password"
+      ? "Sai mật khẩu!"
+      : c === "auth/user-not-found" ? "Chưa tạo user " + SHARED_EMAIL + " trong Firebase Authentication."
+      : c === "auth/operation-not-allowed" ? "Chưa bật Email/Password trong Firebase Authentication."
+      : "Lỗi: " + (c || (e && e.message) || e);
+  }
+}
+$("loginBtn").onclick = login;
+$("pw").onkeydown = e => e.key === "Enter" && login();
+$("out").onclick = () => B.logout();
+B.onAuth(ok => { $("login").hidden = ok; $("app").hidden = !ok; $("demo").hidden = !B.demo; if (ok) load(); });
+
+async function load() {
+  [folders, images] = await Promise.all([B.folders(), B.images()]);
+  folders.sort((a, b) => a.name.localeCompare(b.name));
+  images.sort((a, b) => b.createdAt - a.createdAt);
+  render();
+}
+
+function render() {
+  const n = id => images.filter(x => x.folderId === id).length;
+  $("folders").innerHTML =
+    `<div class="f ${cur === null ? "on" : ""}" data-id="">📁 Tất cả <span class="x">${images.length}</span></div>` +
+    folders.map(f => `<div class="f ${cur === f.id ? "on" : ""}" data-id="${f.id}">📂 ${esc(f.name)} <span class="x">${n(f.id)}</span></div>`).join("");
+  document.querySelectorAll(".f").forEach(el => {
+    el.onclick = () => { cur = el.dataset.id || null; render(); };
+    el.oncontextmenu = e => { e.preventDefault(); delFolder(el.dataset.id); };
+  });
+  const q = $("q").value.trim().toLowerCase();
+  const list = images.filter(x => (q || cur === null || x.folderId === cur) && (!q || x.name.toLowerCase().includes(q)));
+  $("grid").innerHTML = list.map(x => `<div class="c"><img loading="lazy" src="${x.url}"><div><b title="${esc(x.name)}">${esc(x.name)}</b><i data-d="${x.id}">🗑</i></div></div>`).join("") || "<p>Chưa có ảnh nào.</p>";
+  $("grid").querySelectorAll(".c").forEach((el, i) => {
+    el.querySelector("img").onclick = () => { $("lb").innerHTML = `<img src="${list[i].url}">`; $("lb").hidden = false; };
+    el.querySelector("i").onclick = () => delImg(list[i].id);
+  });
+}
+$("lb").onclick = () => $("lb").hidden = true;
+$("q").oninput = render;
+
+$("newF").onclick = async () => {
+  const name = prompt("Tên thư mục mới:");
+  if (!name?.trim()) return;
+  const f = await B.addFolder(name.trim());
+  folders.push(f); cur = f.id; render();
+};
+async function delFolder(id) {
+  if (!id || !confirm("Xóa thư mục này và TOÀN BỘ ảnh bên trong?")) return;
+  for (const im of images.filter(x => x.folderId === id)) await delImg(im.id, true);
+  await B.delFolder(id);
+  folders = folders.filter(f => f.id !== id); if (cur === id) cur = null; render();
+}
+async function delImg(id, silent) {
+  const im = images.find(x => x.id === id);
+  if (!silent && !confirm("Xóa ảnh này?")) return;
+  await B.delImage(id, im.path);
+  images = images.filter(x => x.id !== id); if (!silent) render();
+}
+
+$("up").onclick = () => {
+  if (!cur) return alert("Hãy chọn hoặc tạo một thư mục trước khi tải ảnh lên.");
+  $("file").click();
+};
+$("file").onchange = async e => {
+  const files = [...e.target.files]; let n = 0;
+  try {
+    for (const f of files) {
+      const im = await B.addImage(f, cur, p => $("st").textContent = `Đang tải ${n + 1}/${files.length}: ${p}%`);
+      images.unshift(im); n++;
+    }
+    $("st").textContent = `Đã tải xong ${n} ảnh ✔`;
+  } catch (err) { $("st").textContent = "Lỗi tải ảnh: " + (err.message || err); }
+  e.target.value = ""; render();
+};
+</script>
+</body>
+</html>
