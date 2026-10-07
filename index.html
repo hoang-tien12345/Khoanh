@@ -13,6 +13,8 @@ button.g{background:#e5e9f2;color:#1d2433}
 input{padding:9px 12px;border:1px solid #cbd3e1;border-radius:8px;font-size:14px}
 #login{max-width:340px;margin:18vh auto;background:#fff;padding:28px;border-radius:14px;box-shadow:0 4px 20px #0001;text-align:center}
 #login input{width:100%;margin:14px 0}
+#pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px}
+#pad button{padding:12px 0;background:#e5e9f2;color:#1d2433;font-size:16px}
 #err{color:#dc2626;font-size:13px;min-height:16px}
 #demo{background:#fff7d6;color:#7a5b00;font-size:13px;padding:8px 18px;text-align:center}
 header{display:flex;gap:10px;align-items:center;padding:12px 18px;background:#fff;border-bottom:1px solid #e1e6ef;position:sticky;top:0;z-index:5}
@@ -20,7 +22,12 @@ header h1{font-size:18px;margin:0}
 header input{flex:1;min-width:0}
 .wrap{display:flex;min-height:calc(100vh - 62px)}
 aside{width:230px;padding:14px;background:#fff;border-right:1px solid #e1e6ef;flex:0 0 auto}
-.f{display:flex;justify-content:space-between;padding:9px 10px;border-radius:8px;cursor:pointer;font-size:14px}
+.f{display:flex;align-items:center;gap:6px;padding:8px 6px;border-radius:8px;cursor:pointer;font-size:14px}
+.f .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ar{width:16px;text-align:center;color:#666;font-size:12px;flex:0 0 auto}
+.mn{padding:0 6px;color:#555;font-weight:700;border-radius:6px}.mn:hover{background:#cfd8ec}
+#menu{position:fixed;background:#fff;border:1px solid #d5dbe8;border-radius:10px;box-shadow:0 6px 24px #0003;z-index:20;min-width:180px;overflow:hidden}
+#menu div{padding:10px 14px;cursor:pointer;font-size:14px}#menu div:hover{background:#eef2fb}
 .f:hover{background:#eef2fb}.f.on{background:#dbe7ff;font-weight:600}
 .x{color:#888;font-size:12px}
 .hint{font-size:11px;color:#888;margin-top:10px}
@@ -32,7 +39,8 @@ main{flex:1;padding:18px;min-width:0}
 .c img{width:100%;height:150px;object-fit:cover;display:block;cursor:pointer}
 .c div{padding:7px 9px;font-size:12px;display:flex;justify-content:space-between;gap:6px;align-items:center}
 .c b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
-.c i{cursor:pointer;font-style:normal}
+.c i{cursor:pointer;font-style:normal;font-size:14px}
+.ic{display:flex;gap:7px;flex:0 0 auto}
 #lb{position:fixed;inset:0;background:#000d;display:flex;align-items:center;justify-content:center;z-index:9}
 #lb img{max-width:92vw;max-height:92vh}
 @media(max-width:700px){.wrap{flex-direction:column}aside{width:100%;border:0;border-bottom:1px solid #e1e6ef}}
@@ -42,7 +50,9 @@ main{flex:1;padding:18px;min-width:0}
 
 <div id="login">
   <h2>🔒 Kho Ảnh</h2>
-  <input id="pw" type="password" placeholder="Nhập mật khẩu">
+  <input id="pw" type="password" placeholder="Nhập mật khẩu" autocomplete="off">
+  <label style="font-size:13px;color:#555;display:block;margin-bottom:12px"><input type="checkbox" id="showpw" style="width:auto;margin:0 6px 0 0"> 👁 Hiện mật khẩu</label>
+  <div id="pad"><button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button><button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button><button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button><button type="button" data-k="C">Xóa hết</button><button type="button" data-k="0">0</button><button type="button" data-k="B">⌫</button></div>
   <button id="loginBtn" style="width:100%">Vào</button>
   <p id="err"></p>
 </div>
@@ -58,7 +68,7 @@ main{flex:1;padding:18px;min-width:0}
     <aside>
       <button id="newF" style="width:100%;margin-bottom:10px">+ Thư mục mới</button>
       <div id="folders"></div>
-      <div class="hint">Nhấp chuột phải (hoặc giữ lâu trên điện thoại) vào thư mục để xóa.</div>
+      <div class="hint">Bấm ⋮ bên phải mỗi thư mục (hoặc nhấp chuột phải) để đổi tên, tạo thư mục con, xóa. Có thể dán ảnh bằng Ctrl+V.</div>
     </aside>
     <main>
       <div class="bar">
@@ -66,6 +76,7 @@ main{flex:1;padding:18px;min-width:0}
         <input id="file" type="file" accept="image/*" multiple hidden>
         <span id="st"></span>
       </div>
+      <div id="crumb" style="margin-bottom:10px;font-size:13px;color:#555"></div>
       <div id="grid"></div>
     </main>
   </div>
@@ -116,14 +127,16 @@ function demoBackend() {
       const l = await tx("images", "readonly", s => s.getAll());
       return l.map(x => ({ ...x, url: urls[x.id] || (urls[x.id] = URL.createObjectURL(x.blob)) }));
     },
-    async addFolder(name) { const f = { id: uid(), name }; await tx("folders", "readwrite", s => s.put(f)); return f; },
+    async addFolder(name, parentId) { const f = { id: uid(), name, parentId: parentId || null }; await tx("folders", "readwrite", s => s.put(f)); return f; },
     async delFolder(id) { await tx("folders", "readwrite", s => s.delete(id)); },
+    async renameFolder(id, name) { const f = await tx("folders", "readonly", s => s.get(id)); f.name = name; await tx("folders", "readwrite", s => s.put(f)); },
     async addImage(file, folderId, prog) {
       const x = { id: uid(), name: file.name, folderId, blob: file, createdAt: Date.now() };
       await tx("images", "readwrite", s => s.put(x)); prog(100);
       return { ...x, url: urls[x.id] = URL.createObjectURL(file) };
     },
-    async delImage(id) { await tx("images", "readwrite", s => s.delete(id)); }
+    async delImage(id) { await tx("images", "readwrite", s => s.delete(id)); },
+    async renameImage(id, name) { const x = await tx("images", "readonly", s => s.get(id)); x.name = name; await tx("images", "readwrite", s => s.put(x)); }
   };
 }
 
@@ -140,8 +153,9 @@ async function firebaseBackend() {
     logout: () => Au.signOut(auth),
     folders: () => all("folders"),
     images: () => all("images"),
-    async addFolder(name) { const r = await F.addDoc(F.collection(db, "folders"), { name }); return { id: r.id, name }; },
+    async addFolder(name, parentId) { const d = { name, parentId: parentId || null }; const r = await F.addDoc(F.collection(db, "folders"), d); return { id: r.id, ...d }; },
     async delFolder(id) { await F.deleteDoc(F.doc(db, "folders", id)); },
+    async renameFolder(id, name) { await F.updateDoc(F.doc(db, "folders", id), { name }); },
     async addImage(file, folderId, prog) {
       const path = `images/${folderId}/${Date.now()}_${file.name}`;
       const task = S.uploadBytesResumable(S.ref(st, path), file);
@@ -155,7 +169,8 @@ async function firebaseBackend() {
     async delImage(id, path) {
       try { await S.deleteObject(S.ref(st, path)); } catch {}
       await F.deleteDoc(F.doc(db, "images", id));
-    }
+    },
+    async renameImage(id, name) { await F.updateDoc(F.doc(db, "images", id), { name }); }
   };
 }
 
@@ -164,6 +179,9 @@ const B = firebaseConfig.apiKey === "YOUR_API_KEY" ? demoBackend() : await fireb
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 let folders = [], images = [], cur = null;
+const open = new Set();
+const kids = id => folders.filter(f => (f.parentId || null) === id);
+const desc = id => [id, ...kids(id).flatMap(f => desc(f.id))];
 
 async function login() {
   $("err").textContent = "";
@@ -177,6 +195,11 @@ async function login() {
       : "Lỗi: " + (c || (e && e.message) || e);
   }
 }
+$("showpw").onchange = e => $("pw").type = e.target.checked ? "text" : "password";
+document.querySelectorAll("#pad button").forEach(b => b.onclick = () => {
+  const k = b.dataset.k, p = $("pw");
+  p.value = k === "C" ? "" : k === "B" ? p.value.slice(0, -1) : p.value + k;
+});
 $("loginBtn").onclick = login;
 $("pw").onkeydown = e => e.key === "Enter" && login();
 $("out").onclick = () => B.logout();
@@ -190,36 +213,79 @@ async function load() {
 }
 
 function render() {
-  const n = id => images.filter(x => x.folderId === id).length;
+  const tree = (pid, d) => kids(pid).map(f => {
+    const k = kids(f.id).length, o = open.has(f.id);
+    return `<div class="f ${cur === f.id ? "on" : ""}" style="padding-left:${6 + d * 16}px" data-id="${f.id}"><span class="ar" data-t="${f.id}">${k ? (o ? "▾" : "▸") : ""}</span><span class="nm" title="${esc(f.name)}">${k ? "📂" : "📁"} ${esc(f.name)}</span><span class="x">${images.filter(x => desc(f.id).includes(x.folderId)).length}</span><span class="mn" data-m="${f.id}">⋮</span></div>` + (o ? tree(f.id, d + 1) : "");
+  }).join("");
   $("folders").innerHTML =
-    `<div class="f ${cur === null ? "on" : ""}" data-id="">📁 Tất cả <span class="x">${images.length}</span></div>` +
-    folders.map(f => `<div class="f ${cur === f.id ? "on" : ""}" data-id="${f.id}">📂 ${esc(f.name)} <span class="x">${n(f.id)}</span></div>`).join("");
+    `<div class="f ${cur === null ? "on" : ""}" data-id=""><span class="ar"></span><span class="nm">🗂 Tất cả</span><span class="x">${images.length}</span></div>` + tree(null, 0);
+  const path = []; for (let c = folders.find(f => f.id === cur); c; c = folders.find(f => f.id === c.parentId)) path.unshift(c.name);
+  $("crumb").textContent = cur ? "📍 " + path.join(" › ") : "📍 Tất cả ảnh";
   document.querySelectorAll(".f").forEach(el => {
-    el.onclick = () => { cur = el.dataset.id || null; render(); };
-    el.oncontextmenu = e => { e.preventDefault(); delFolder(el.dataset.id); };
+    el.onclick = () => { cur = el.dataset.id || null; if (cur && kids(cur).length) open.add(cur); render(); };
+    if (el.dataset.id) el.oncontextmenu = e => { e.preventDefault(); showMenu(el.dataset.id, e.clientX, e.clientY); };
+  });
+  document.querySelectorAll("[data-t]").forEach(el => el.onclick = e => {
+    e.stopPropagation(); const id = el.dataset.t;
+    if (!kids(id).length) { cur = id; return render(); }
+    open.has(id) ? open.delete(id) : open.add(id); render();
+  });
+  document.querySelectorAll("[data-m]").forEach(el => el.onclick = e => {
+    e.stopPropagation(); const r = el.getBoundingClientRect(); showMenu(el.dataset.m, r.left, r.bottom + 4);
   });
   const q = $("q").value.trim().toLowerCase();
   const list = images.filter(x => (q || cur === null || x.folderId === cur) && (!q || x.name.toLowerCase().includes(q)));
-  $("grid").innerHTML = list.map(x => `<div class="c"><img loading="lazy" src="${x.url}"><div><b title="${esc(x.name)}">${esc(x.name)}</b><i data-d="${x.id}">🗑</i></div></div>`).join("") || "<p>Chưa có ảnh nào.</p>";
+  $("grid").innerHTML = list.map(x => `<div class="c"><img loading="lazy" src="${x.url}"><div><b title="${esc(x.name)}">${esc(x.name)}</b><span class="ic"><i data-a="dl" title="Tải về">⬇️</i><i data-a="ren" title="Đổi tên">✏️</i><i data-a="del" title="Xóa">🗑</i></span></div></div>`).join("") || "<p>Chưa có ảnh nào.</p>";
   $("grid").querySelectorAll(".c").forEach((el, i) => {
     el.querySelector("img").onclick = () => { $("lb").innerHTML = `<img src="${list[i].url}">`; $("lb").hidden = false; };
-    el.querySelector("i").onclick = () => delImg(list[i].id);
+    el.querySelectorAll("i").forEach(b => b.onclick = () => {
+      const a = b.dataset.a, x = list[i];
+      if (a === "dl") dlImg(x); else if (a === "ren") renameImg(x.id); else delImg(x.id);
+    });
   });
 }
 $("lb").onclick = () => $("lb").hidden = true;
 $("q").oninput = render;
 
-$("newF").onclick = async () => {
-  const name = prompt("Tên thư mục mới:");
+async function mkFolder(parent) {
+  const name = prompt(parent ? "Tên thư mục con:" : "Tên thư mục mới:");
   if (!name?.trim()) return;
-  const f = await B.addFolder(name.trim());
-  folders.push(f); cur = f.id; render();
-};
+  const f = await B.addFolder(name.trim(), parent);
+  folders.push(f); if (parent) open.add(parent); cur = f.id; render();
+}
+$("newF").onclick = () => mkFolder(null);
+async function renameF(id) {
+  const f = folders.find(x => x.id === id);
+  const name = prompt("Đổi tên thư mục:", f.name);
+  if (!name?.trim() || name.trim() === f.name) return;
+  await B.renameFolder(id, name.trim()); f.name = name.trim(); render();
+}
+const menu = document.createElement("div"); menu.id = "menu"; menu.hidden = true; document.body.appendChild(menu);
+function showMenu(id, x, y) {
+  menu.innerHTML = '<div data-a="ren">✏️ Đổi tên</div><div data-a="sub">➕ Tạo thư mục con</div><div data-a="del" style="color:#dc2626">🗑 Xóa thư mục</div>';
+  menu.hidden = false; menu.style.left = Math.max(4, Math.min(x, innerWidth - 190)) + "px"; menu.style.top = Math.min(y, innerHeight - 140) + "px";
+  menu.onclick = e => { const a = e.target.dataset.a; menu.hidden = true; if (a === "ren") renameF(id); if (a === "sub") mkFolder(id); if (a === "del") delFolder(id); };
+}
+document.addEventListener("click", () => menu.hidden = true);
 async function delFolder(id) {
-  if (!id || !confirm("Xóa thư mục này và TOÀN BỘ ảnh bên trong?")) return;
-  for (const im of images.filter(x => x.folderId === id)) await delImg(im.id, true);
-  await B.delFolder(id);
-  folders = folders.filter(f => f.id !== id); if (cur === id) cur = null; render();
+  if (!id || !confirm("Xóa thư mục này, các thư mục con và TOÀN BỘ ảnh bên trong?")) return;
+  const ids = desc(id);
+  for (const im of images.filter(x => ids.includes(x.folderId))) await delImg(im.id, true);
+  for (const fid of ids) await B.delFolder(fid);
+  folders = folders.filter(f => !ids.includes(f.id)); if (ids.includes(cur)) cur = null; render();
+}
+async function dlImg(x) {
+  try {
+    const u = URL.createObjectURL(await (await fetch(x.url)).blob());
+    const a = document.createElement("a"); a.href = u; a.download = x.name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(u), 3000);
+  } catch { window.open(x.url, "_blank"); }
+}
+async function renameImg(id) {
+  const x = images.find(i => i.id === id);
+  const name = prompt("Đổi tên ảnh:", x.name);
+  if (!name?.trim() || name.trim() === x.name) return;
+  await B.renameImage(id, name.trim()); x.name = name.trim(); render();
 }
 async function delImg(id, silent) {
   const im = images.find(x => x.id === id);
@@ -232,8 +298,8 @@ $("up").onclick = () => {
   if (!cur) return alert("Hãy chọn hoặc tạo một thư mục trước khi tải ảnh lên.");
   $("file").click();
 };
-$("file").onchange = async e => {
-  const files = [...e.target.files]; let n = 0;
+async function uploadFiles(files) {
+  let n = 0;
   try {
     for (const f of files) {
       const im = await B.addImage(f, cur, p => $("st").textContent = `Đang tải ${n + 1}/${files.length}: ${p}%`);
@@ -241,8 +307,19 @@ $("file").onchange = async e => {
     }
     $("st").textContent = `Đã tải xong ${n} ảnh ✔`;
   } catch (err) { $("st").textContent = "Lỗi tải ảnh: " + (err.message || err); }
-  e.target.value = ""; render();
-};
+  render();
+}
+$("file").onchange = async e => { await uploadFiles([...e.target.files]); e.target.value = ""; };
+document.addEventListener("paste", e => {
+  if ($("app").hidden) return;
+  const files = [...(e.clipboardData?.items || [])].filter(i => i.type.startsWith("image/")).map(i => {
+    const f = i.getAsFile(); return new File([f], "dan_" + Date.now() + "." + (f.type.split("/")[1] || "png"), { type: f.type });
+  });
+  if (!files.length) return;
+  e.preventDefault();
+  if (!cur) return alert("Hãy chọn hoặc tạo một thư mục trước khi dán ảnh (Ctrl+V).");
+  uploadFiles(files);
+});
 </script>
 </body>
 </html>
